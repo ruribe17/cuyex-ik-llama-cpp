@@ -28,14 +28,22 @@
 
 ```bash
 # 1️⃣ Clone into LocalAI backend directory
-git clone https://github.com/mudler/LocalAI.git && cd LocalAI
-git clone https://github.com/your-org/cuyex-ik-llama-cpp.git backend/cpp/cuyex-ik-llama-cpp
+git clone https://github.com/mudler/LocalAI.git && cd LocalAI/backend/cpp/
+git clone https://github.com/ruribe17/cuyex-ik-llama-cpp.git cuyex-ik-llama-cpp
 
 # 2️⃣ Build (one-time)
 cd backend/cpp/cuyex-ik-llama-cpp && make 2690v4
 
-# 3️⃣ Deploy — just copy the binary
-sudo cp output/ik-llama-cpp-2690v4 /opt/local-path-backends/cpu-ikllama-cpp/grpc-server
+# 3️⃣ Deploy — just copy the binary (e.g.: /opt/local-path-backends/)
+sudo mkdir -p /opt/local-path-backends/cpu-ikllama-cpp
+sudo cp output/ik-llama-cpp-2690v4 /opt/local-path-backends/cpu-ikllama-cpp/
+
+# 4️⃣ Copy libraries to the LocalAI backends directory
+sudo cp prepare.sh /opt/local-path-backends/cpu-ikllama-cpp/
+sudo cp package.sh /opt/local-path-backends/cpu-ikllama-cpp/
+sudo cp run.sh /opt/local-path-backends/cpu-ikllama-cpp/
+sudo cp -r ./lib/. /opt/local-path-backends/cpu-ikllama-cpp/lib/
+sudo chmod -R +x /opt/local-path-backends/cpu-ikllama-cpp/lib/
 
 # ✅ Done. Start LocalAI — backend auto-detects.
 ```
