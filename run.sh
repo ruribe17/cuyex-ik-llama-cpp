@@ -2,90 +2,73 @@
 set -ex
 
 # Get the absolute current dir where the script is located
-CURDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CURDIR=$(dirname "$(realpath $0)")
 
-# Ensure CURDIR is valid
-if [ ! -d "$CURDIR" ]; then
-    echo "Error: CURDIR '$CURDIR' is not a valid directory" >&2
-    exit 1
+cd /
+
+echo "CPU info:"
+grep -e "model\sname" /proc/cpuinfo | head -1
+grep -e "flags" /proc/cpuinfo | head -1
+
+BINARY=llama-cpp-fallback
+
+if grep -q -e "\savx\s" /proc/cpuinfo ; then
+	echo "CPU:    AVX    found OK"
+	if [ -e $CURDIR/llama-cpp-avx ]; then
+		BINARY=llama-cpp-avx
+	fi
 fi
 
-echo "Running from: $CURDIR"
+if grep -q -e "\savx2\s" /proc/cpuinfo ; then
+	echo "CPU:    AVX2   found OK"
+	if [ -e $CURDIR/ik-llama-cpp-2690v4 ]; then
+		BINARY=ik-llama-cpp-2690v4
+	fi
+fi
 
-# Check for binary existence helper
-check_binary() {
-    local binary="$1"
-    if [ -x "$CURDIR/$binary" ]; then
-        echo "$binary"
-        return 0
+# Check avx 512
+if grep -q -e "\savx512f\s" /proc/cpuinfo ; then
+	echo "CPU:    AVX512F found OK"
+	if [ -e $CURDIR/llama-cpp-avx512 ]; then
+		BINARY=llama-cpp-avx512
+	fi
+fi
+
+if [ -n "$LLAMACPP_GRPC_SERVERS" ]; then
+	if [ -e $CURDIR/llama-cpp-grpc ]; then
+		BINARY=llama-cpp-grpc
+	fi
+fi
+ 
+# Extend ld library path with the dir where this script is located/lib
+if [ "$(uname)" == "Darwin" ]; then
+	export DYLD_LIBRARY_PATH=$CURDIR/lib:$DYLD_LIBRARY_PATH
+	#export DYLD_FALLBACK_LIBRARY_PATH=$CURDIR/lib:$DYLD_FALLBACK_LIBRARY_PATH
+else
+	export LD_LIBRARY_PATH=$CURDIR/lib:$LD_LIBRARY_PATH
+fi
+
+# NUMA: distribuir memoria entre ambos sockets al cargar el modelo
+NUMACTL=""
+if command -v numactl &>/dev/null; then
+    NUMA_NODES=$(numactl --hardware | grep "available:" | awk '{print $2}')
+    if [ "$NUMA_NODES" -gt 1 ] 2>/dev/null; then
+        echo "NUMA: $NUMA_NODES nodes detected, using --interleave=all"
+        NUMACTL="numactl --interleave=all"
+    else
+        echo "NUMA: single node or numactl unavailable, skipping"
     fi
-    return 1
-}
-
-# Detect CPU features
-BINARY=""
-
-# Try fallback first (always available if built)
-if check_binary "ikllama-cpp-fallback"; then
-    BINARY="ikllama-cpp-fallback"
 fi
 
-# AVX?
-if grep -qE '\savx\s' /proc/cpuinfo; then
-    echo "CPU: AVX found"
-    if check_binary "ikllama-cpp-avx"; then
-        BINARY="ikllama-cpp-avx"
-    fi
-fi
-
-# AVX2?
-if grep -qE '\savx2\s' /proc/cpuinfo; then
-    echo "CPU: AVX2 found"
-    if check_binary "ikllama-cpp-avx2"; then
-        BINARY="ikllama-cpp-avx2"
-    fi
-fi
-
-# AVX-512?
-if grep -qE '\savx512f\s' /proc/cpuinfo; then
-    echo "CPU: AVX512F found"
-    if check_binary "ikllama-cpp-avx512"; then
-        BINARY="ikllama-cpp-avx512"
-    fi
-fi
-
-# gRPC mode?
-if [ -n "${LLAMACPP_GRPC_SERVERS:-}" ] && check_binary "ikllama-cpp-grpc"; then
-    BINARY="ikllama-cpp-grpc"
-fi
-
-# Fallback if still empty
-if [ -z "$BINARY" ]; then
-    echo "Error: No ikllama-cpp binary found. Expected at least one of:" >&2
-    echo "  - ikllama-cpp-fallback" >&2
-    echo "  - ikllama-cpp-avx" >&2
-    echo "  - ikllama-cpp-avx2" >&2
-    echo "  - ikllama-cpp-avx512" >&2
-    echo "  - ikllama-cpp-grpc" >&2
-    echo "Current directory: $CURDIR" >&2
-    ls -la "$CURDIR"/ikllama-cpp* 2>/dev/null || echo "No ikllama-cpp binaries found" >&2
-    exit 1
+# If there is a lib/ld.so, use it
+if [ -f $CURDIR/lib/ld.so ]; then
+	echo "Using lib/ld.so"
+	echo "Using binary: $BINARY"
+	exec $CURDIR/lib/ld.so $CURDIR/$BINARY "$@"
 fi
 
 echo "Using binary: $BINARY"
+exec $NUMACTL $CURDIR/$BINARY "$@"
 
-# Setup library path
-if [ "$(uname)" == "Darwin" ]; then
-    export DYLD_LIBRARY_PATH="$CURDIR/lib:${DYLD_LIBRARY_PATH:-}"
-else
-    export LD_LIBRARY_PATH="$CURDIR/lib:${LD_LIBRARY_PATH:-}"
-fi
-
-# Optional: use custom ld.so if present (e.g., for static linking or glibc compatibility)
-if [ -f "$CURDIR/lib/ld.so" ]; then
-    echo "Using custom ld.so: $CURDIR/lib/ld.so"
-    exec "$CURDIR/lib/ld.so" "$CURDIR/$BINARY" "$@"
-fi
-
-# Direct execution
-exec "$CURDIR/$BINARY" "$@"
+# We should never reach this point, however just in case we do, run fallback
+exec $CURDIR/llama-cpp-fallback "$@"

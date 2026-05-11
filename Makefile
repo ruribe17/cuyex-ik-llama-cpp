@@ -1,236 +1,262 @@
-# 🔧 NUEVO: Versión y repo de ik_llama.cpp
-IK_LLAMA_VERSION?=542988773c00f4862c7fdd75e36fffc365d8af86
-#IK_LLAMA_VERSION?=afa6439
-IK_LLAMA_REPO?=https://github.com/ikawrakow/ik_llama.cpp.git
+# =============================================================================
+# Makefile para cuyex-ik-llama-cpp (Estructura Out-of-Source Óptima + OpenBLAS estático)
+# =============================================================================
 
-CMAKE_ARGS?=
-BUILD_TYPE?=
-NATIVE?=false
-ONEAPI_VARS?=/opt/intel/oneapi/setvars.sh
-TARGET?=--target grpc-server
-JOBS?=$(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
-ARCH?=$(shell uname -m)
+# IK_LLAMA_VERSION  ?= a8aecbf15933295af96504f9a693998322185b5c
+IK_LLAMA_VERSION  ?= 35845dd9753762829fd9b5d75a0b710d9b5bacf5
+LLAMA_REPO        ?= https://github.com/ikawrakow/ik_llama.cpp
 
-CMAKE_ARGS+=-DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF
+JOBS              ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
+CURRENT_DIR       := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
-CURRENT_MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+# ---------------------------------------------------------------------------
+# Rutas Absolutas
+# ---------------------------------------------------------------------------
+PROJECT_DIR       := $(patsubst %/,%,$(CURRENT_DIR))
+PARENT_DIR        := $(dir $(patsubst %/,%,$(PROJECT_DIR)))
+GRPC_DIR          := $(PARENT_DIR)grpc
+INSTALLED_PACKAGES:= $(GRPC_DIR)/installed_packages
+BUILDS_DIR        := $(PROJECT_DIR)/builds
+OUTPUT_DIR        := $(PROJECT_DIR)/output
+BACKEND_PROTO_SRC := $(PARENT_DIR)backend.proto
+BACKEND_PROTO_LINK:= $(PROJECT_DIR)/backend.proto
 
-ifeq ($(NATIVE),false)
-    CMAKE_ARGS+=-DGGML_NATIVE=OFF -DLLAMA_OPENSSL=OFF
+# ---------------------------------------------------------------------------
+# Detección de Rutas CMake para Dependencias
+# ---------------------------------------------------------------------------
+define detect_cmake_dir
+$(shell \
+  if [ -f "$(INSTALLED_PACKAGES)/lib/cmake/$(1)/$(2)" ]; then \
+    echo "$(INSTALLED_PACKAGES)/lib/cmake"; \
+  elif [ -f "$(INSTALLED_PACKAGES)/lib64/cmake/$(1)/$(2)" ]; then \
+    echo "$(INSTALLED_PACKAGES)/lib64/cmake"; \
+  else \
+    echo "NOT_FOUND"; \
+  fi)
+endef
+
+GRPC_CMAKE_DIR    := $(call detect_cmake_dir,grpc,gRPCConfig.cmake)
+ABSL_CMAKE_DIR    := $(call detect_cmake_dir,absl,abslConfig.cmake)
+PROTOBUF_CMAKE_DIR:= $(call detect_cmake_dir,protobuf,protobuf-config.cmake)
+UTF8_CMAKE_DIR    := $(call detect_cmake_dir,utf8_range,utf8_range-config.cmake)
+
+ifeq ($(GRPC_CMAKE_DIR),NOT_FOUND)
+$(error ❌ ERROR: gRPCConfig.cmake no encontrado en $(INSTALLED_PACKAGES). Ejecuta primero la instalación de gRPC en ../grpc/)
 endif
 
-ifeq ($(BUILD_TYPE),cublas)
-    CMAKE_ARGS+=-DGGML_CUDA=ON
-else ifeq ($(BUILD_TYPE),openblas)
-    CMAKE_ARGS+=-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS
-else ifeq ($(BUILD_TYPE),clblas)
-    CMAKE_ARGS+=-DGGML_CLBLAST=ON -DCLBlast_DIR=/some/path
-else ifeq ($(BUILD_TYPE),hipblas)
-    ROCM_HOME ?= /opt/rocm
-    ROCM_PATH ?= /opt/rocm
-    export CXX=$(ROCM_HOME)/llvm/bin/clang++
-    export CC=$(ROCM_HOME)/llvm/bin/clang
-    AMDGPU_TARGETS?=gfx803,gfx900,gfx906,gfx908,gfx90a,gfx942,gfx1010,gfx1030,gfx1032,gfx1100,gfx1101,gfx1102,gfx1200,gfx1201
-    CMAKE_ARGS+=-DGGML_HIP=ON -DAMDGPU_TARGETS=$(AMDGPU_TARGETS)
-else ifeq ($(BUILD_TYPE),vulkan)
-    CMAKE_ARGS+=-DGGML_VULKAN=1
-else ifeq ($(OS),Darwin)
-    ifeq ($(BUILD_TYPE),)
-        BUILD_TYPE=metal
-    endif
-    ifneq ($(BUILD_TYPE),metal)
-        CMAKE_ARGS+=-DGGML_METAL=OFF
-    else
-        CMAKE_ARGS+=-DGGML_METAL=ON
-        CMAKE_ARGS+=-DGGML_METAL_EMBED_LIBRARY=ON
-        CMAKE_ARGS+=-DGGML_METAL_USE_BF16=ON
-        CMAKE_ARGS+=-DGGML_OPENMP=OFF
-    endif
-    TARGET+=--target ggml-metal
-endif
+# ---------------------------------------------------------------------------
+# Flags Comunes de CMake
+# ---------------------------------------------------------------------------
+LOCAL_CMAKE_PREFIX := $(INSTALLED_PACKAGES)/lib/cmake;$(INSTALLED_PACKAGES)/lib64/cmake;$(INSTALLED_PACKAGES)
+CMAKE_IGNORE := /usr/local/lib/cmake;/usr/local/share/cmake;/usr/local/lib;/usr/local/include
 
-ifeq ($(BUILD_TYPE),sycl_f16)
-    CMAKE_ARGS+=-DGGML_SYCL=ON \
-        -DCMAKE_C_COMPILER=icx \
-        -DCMAKE_CXX_COMPILER=icpx \
-        -DCMAKE_CXX_FLAGS="-fsycl" \
-        -DGGML_SYCL_F16=ON
-endif
+COMMON_CMAKE_ARGS := \
+	-DCMAKE_PREFIX_PATH:STRING='$(LOCAL_CMAKE_PREFIX)' \
+	-DCMAKE_IGNORE_PATH:STRING='$(CMAKE_IGNORE)' \
+	-Dabsl_DIR:PATH=$(ABSL_CMAKE_DIR) \
+	-DProtobuf_DIR:PATH=$(PROTOBUF_CMAKE_DIR) \
+	-Dutf8_range_DIR:PATH=$(UTF8_CMAKE_DIR) \
+	-DgRPC_DIR:PATH=$(GRPC_CMAKE_DIR) \
+	-DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES:STRING=$(INSTALLED_PACKAGES)/include \
+	-D_PROTOBUF_PROTOC:FILEPATH=$(INSTALLED_PACKAGES)/bin/protoc \
+	-D_GRPC_CPP_PLUGIN_EXECUTABLE:FILEPATH=$(INSTALLED_PACKAGES)/bin/grpc_cpp_plugin \
+	-DBUILD_SHARED_LIBS=OFF \
+	-DLLAMA_CURL=OFF \
+	-DGGML_NATIVE=OFF \
+	-DLLAMA_OPENSSL=OFF
 
-ifeq ($(BUILD_TYPE),sycl_f32)
-    CMAKE_ARGS+=-DGGML_SYCL=ON \
-        -DCMAKE_C_COMPILER=icx \
-        -DCMAKE_CXX_COMPILER=icpx \
-        -DCMAKE_CXX_FLAGS="-fsycl"
-endif
+# ---------------------------------------------------------------------------
+# OpenBLAS estático: configuración global (usada por todos los targets)
+# ---------------------------------------------------------------------------
+OPENBLAS_ROOT ?= /usr
+OPENBLAS_LIBDIR ?= $(OPENBLAS_ROOT)/lib64
+OPENBLAS_INCDIR ?= $(OPENBLAS_ROOT)/include
 
-INSTALLED_PACKAGES=$(CURDIR)/../grpc/installed_packages
-INSTALLED_LIB_CMAKE=$(INSTALLED_PACKAGES)/lib/cmake
-ADDED_CMAKE_ARGS=-Dabsl_DIR=${INSTALLED_LIB_CMAKE}/absl \
-                 -DProtobuf_DIR=${INSTALLED_LIB_CMAKE}/protobuf \
-                 -Dutf8_range_DIR=${INSTALLED_LIB_CMAKE}/utf8_range \
-                 -DgRPC_DIR=${INSTALLED_LIB_CMAKE}/grpc \
-                 -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES=${INSTALLED_PACKAGES}/include
+# Detectar si libopenblas.a existe (si no, usar fallback dinámico o error)
+OPENBLAS_STATIC_LIB ?= $(OPENBLAS_LIBDIR)/libopenblas.a
+OPENBLAS_FOUND ?= $(shell test -f "$(OPENBLAS_STATIC_LIB)" && echo "yes" || echo "no")
 
-build-llama-cpp-grpc-server:
-ifdef BUILD_GRPC_FOR_BACKEND_LLAMA
-	$(MAKE) -C ../../grpc build
-	_PROTOBUF_PROTOC=${INSTALLED_PACKAGES}/bin/proto \
-	_GRPC_CPP_PLUGIN_EXECUTABLE=${INSTALLED_PACKAGES}/bin/grpc_cpp_plugin \
-	PATH="${INSTALLED_PACKAGES}/bin:${PATH}" \
-	CMAKE_ARGS="${CMAKE_ARGS} ${ADDED_CMAKE_ARGS}" \
-	IK_LLAMA_VERSION=$(IK_LLAMA_VERSION) \
-	$(MAKE) -C $(CURRENT_MAKEFILE_DIR) grpc-server
+ifeq ($(OPENBLAS_FOUND),yes)
+	# ✅ CORRECCIÓN CLAVE: Usar OPENBLAS_LIB (no OPENBLAS_LIBRARY) para forzar .a
+	# llama.cpp usa OPENBLAS_LIB para elegir .a en lugar de .so
+	OPENBLAS_FLAGS := \
+		-DGGML_BLAS=ON \
+		-DGGML_BLAS_VENDOR=OpenBLAS \
+		-DOPENBLAS_INCLUDE_DIR=$(OPENBLAS_INCDIR) \
+		-DOPENBLAS_LIB=$(OPENBLAS_STATIC_LIB) \
+		-DOPENBLAS_LIBRARY=$(OPENBLAS_STATIC_LIB)
+	OPENBLAS_LDFLAGS := -L$(OPENBLAS_LIBDIR) -Wl,-Bstatic -lopenblas -Wl,-Bdynamic
 else
-	echo "BUILD_GRPC_FOR_BACKEND_LLAMA is not defined."
-	IK_LLAMA_VERSION=$(IK_LLAMA_VERSION) $(MAKE) -C $(CURRENT_MAKEFILE_DIR) grpc-server
+	OPENBLAS_FLAGS :=
+	OPENBLAS_LDFLAGS :=
 endif
 
-# ── AVX2 optimizado para Broadwell-EP (E5-2690v4 / E5-2697Av4 dual socket) ──
-#
-# DISEÑO: en lugar de crear un build-directory separado (que requeriría
-# copiar el Makefile completo), este target:
-#   1. Asegura que prepare.sh fue ejecutado (grpc-server ya tiene sus archivos)
-#   2. Limpia solo el build/ de cmake (no los fuentes)
-#   3. Recompila con CMAKE_ARGS específicos para Broadwell + BLAS + C++20
-#   4. Copia el binario resultante como llama-cpp-avx2
-#
-# Flags Broadwell-EP:
-#   -march=broadwell -mtune=broadwell  instrucciones específicas del Xeon
-#   -DGGML_BMI2=ON                     Broadwell soporta BMI2
-#   -DGGML_BLAS=ON + OpenBLAS          aceleración BLAS multi-thread
-#   -DBLAS_LIBRARIES=libopenblaso.so.0 variante OpenMP de OpenBLAS
-#   -DCMAKE_CXX_STANDARD=20            C++20 requerido por grpc-server.cpp
-#   -DGGML_LTO=ON                      Link Time Optimization
-llama-cpp-avx2: ik_llama.cpp ik_llama.cpp/examples/grpc-server
-	$(info ${GREEN}I ik_llama-cpp build info:avx2 broadwell-optimized${RESET})
-	rm -rf ik_llama.cpp/build
-	CMAKE_ARGS="$(CMAKE_ARGS) \
-	    -DCMAKE_BUILD_TYPE=Release \
-	    -DCMAKE_CXX_STANDARD=17 \
-	    -DCMAKE_C_FLAGS='-O3 -march=broadwell -mtune=broadwell -funroll-loops' \
-	    -DCMAKE_CXX_FLAGS='-O3 -march=broadwell -mtune=broadwell -funroll-loops' \
-	    -DGGML_AVX=ON \
-	    -DGGML_AVX2=ON \
-	    -DGGML_AVX512=OFF \
-	    -DGGML_FMA=ON \
-	    -DGGML_F16C=ON \
-	    -DGGML_BMI2=ON \
-	    -DGGML_OPENMP=ON \
-	    -DGGML_LTO=ON \
-	    -DGGML_BLAS=ON \
-	    -DGGML_BLAS_VENDOR=OpenBLAS \
-	    -DBLAS_LIBRARIES=/usr/lib64/libopenblaso.so.0 \
-	    -DBLAS_INCLUDE_DIRS=/usr/include/openblas" \
-	$(MAKE) build-llama-cpp-grpc-server
-	cp -fv grpc-server llama-cpp-avx2
+# ---------------------------------------------------------------------------
+# Flags Específicos por Variante (con soporte OpenBLAS estático)
+# ---------------------------------------------------------------------------
+FLAGS_AVX2 := \
+	-DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_AVX512=OFF -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON
 
-# Dependencia: asegura que prepare.sh se ejecutó y grpc-server tiene sus archivos
-ik_llama.cpp/examples/grpc-server: ik_llama.cpp
-	mkdir -p ik_llama.cpp/examples/grpc-server
-	bash prepare.sh
+FLAGS_AVX512 := \
+	-DGGML_AVX=ON -DGGML_AVX2=OFF -DGGML_AVX512=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON
 
-llama-cpp-avx512: ik_llama.cpp ik_llama.cpp/examples/grpc-server
-	$(info ${GREEN}I ik_llama-cpp build info:avx512${RESET})
-	rm -rf ik_llama.cpp/build
-	CMAKE_ARGS="$(CMAKE_ARGS) \
-	    -DCMAKE_BUILD_TYPE=Release \
-	    -DCMAKE_CXX_STANDARD=20 \
-	    -DGGML_AVX=ON \
-	    -DGGML_AVX2=OFF \
-	    -DGGML_AVX512=ON \
-	    -DGGML_FMA=ON \
-	    -DGGML_F16C=ON \
-	    -DGGML_OPENMP=ON" \
-	$(MAKE) build-llama-cpp-grpc-server
-	cp -fv grpc-server llama-cpp-avx512
+FLAGS_FALLBACK := \
+	-DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_AVX512=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_BMI2=OFF
 
-llama-cpp-avx: ik_llama.cpp ik_llama.cpp/examples/grpc-server
-	$(info ${GREEN}I ik_llama-cpp build info:avx${RESET})
-	rm -rf ik_llama.cpp/build
-	CMAKE_ARGS="$(CMAKE_ARGS) \
-	    -DCMAKE_BUILD_TYPE=Release \
-	    -DCMAKE_CXX_STANDARD=20 \
-	    -DGGML_AVX=ON \
-	    -DGGML_AVX2=OFF \
-	    -DGGML_AVX512=OFF \
-	    -DGGML_FMA=OFF \
-	    -DGGML_F16C=OFF \
-	    -DGGML_BMI2=OFF \
-	    -DGGML_OPENMP=ON" \
-	$(MAKE) build-llama-cpp-grpc-server
-	cp -fv grpc-server llama-cpp-avx
+FLAGS_2690V4_CFLAGS := -O3 -march=broadwell -mtune=broadwell -fno-math-errno -funsafe-math-optimizations -funroll-loops -flto
+FLAGS_2690V4_LDFLAGS := -static-libgcc -static-libstdc++ -Wl,--as-needed $(OPENBLAS_LDFLAGS)
+FLAGS_2690V4 := \
+	-DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_AVX512=OFF -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON \
+	-DGGML_OPENMP=ON -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+	-DCMAKE_CXX_FLAGS="$(FLAGS_2690V4_CFLAGS)" \
+	-DCMAKE_C_FLAGS="$(FLAGS_2690V4_CFLAGS)" \
+	-DCMAKE_EXE_LINKER_FLAGS="$(FLAGS_2690V4_LDFLAGS)" \
+	$(OPENBLAS_FLAGS)
 
-llama-cpp-fallback: ik_llama.cpp ik_llama.cpp/examples/grpc-server
-	$(info ${GREEN}I ik_llama-cpp build info:fallback${RESET})
-	rm -rf ik_llama.cpp/build
-	CMAKE_ARGS="$(CMAKE_ARGS) \
-	    -DCMAKE_BUILD_TYPE=Release \
-	    -DCMAKE_CXX_STANDARD=20 \
-	    -DGGML_AVX=OFF \
-	    -DGGML_AVX2=OFF \
-	    -DGGML_AVX512=OFF \
-	    -DGGML_FMA=OFF \
-	    -DGGML_F16C=OFF \
-	    -DGGML_BMI2=OFF \
-	    -DGGML_OPENMP=ON" \
-	$(MAKE) build-llama-cpp-grpc-server
-	cp -fv grpc-server llama-cpp-fallback
+# ---------------------------------------------------------------------------
+# TARGETS PRINCIPALES
+# ---------------------------------------------------------------------------
 
-llama-cpp-grpc: ik_llama.cpp ik_llama.cpp/examples/grpc-server
-	$(info ${GREEN}I ik_llama-cpp build info:grpc${RESET})
-	rm -rf ik_llama.cpp/build
-	CMAKE_ARGS="$(CMAKE_ARGS) \
-	    -DCMAKE_BUILD_TYPE=Release \
-	    -DCMAKE_CXX_STANDARD=20 \
-	    -DGGML_RPC=ON \
-	    -DGGML_AVX=OFF \
-	    -DGGML_AVX2=OFF \
-	    -DGGML_AVX512=OFF \
-	    -DGGML_FMA=OFF \
-	    -DGGML_F16C=OFF \
-	    -DGGML_BMI2=OFF" \
-	TARGET="--target grpc-server --target rpc-server" \
-	$(MAKE) build-llama-cpp-grpc-server
-	cp -fv grpc-server llama-cpp-grpc
+.PHONY: all clean purge llama.cpp apply-patches proto-link
+.PHONY: avx2 avx512 fallback 2690v4
 
-llama-cpp-rpc-server: llama-cpp-grpc
-	cp -fv ik_llama.cpp/build/bin/rpc-server llama-cpp-rpc-server
+all: avx2
 
-# 🔧 CLONACIÓN CON IK_LLAMA_REPO Y IK_LLAMA_VERSION
-ik_llama.cpp:
-	mkdir -p ik_llama.cpp
-	cd ik_llama.cpp && \
-	git init && \
-	git remote add origin $(IK_LLAMA_REPO) && \
-	git fetch origin && \
-	git checkout -b build $(IK_LLAMA_VERSION) && \
-	git submodule update --init --recursive --depth 1 --single-branch
+# ---------------------------------------------------------------------------
+# CREAR SYMLINK DE backend.proto
+# ---------------------------------------------------------------------------
+proto-link:
+	@echo "🔗 Verificando symlink de backend.proto..."
+	@if [ -L "$(BACKEND_PROTO_LINK)" ]; then \
+		if [ ! -e "$(BACKEND_PROTO_LINK)" ]; then \
+			echo "  ⚠️  Symlink roto. Recreando..."; \
+			rm "$(BACKEND_PROTO_LINK)"; \
+			ln -s "$(BACKEND_PROTO_SRC)" "$(BACKEND_PROTO_LINK)"; \
+		fi; \
+	elif [ -e "$(BACKEND_PROTO_LINK)" ]; then \
+		echo "  ℹ️  backend.proto existe (archivo real). Se mantiene."; \
+	else \
+		if [ -f "$(BACKEND_PROTO_SRC)" ]; then \
+			ln -s "$(BACKEND_PROTO_SRC)" "$(BACKEND_PROTO_LINK)"; \
+			echo "  ✅ Symlink creado: $(BACKEND_PROTO_LINK)"; \
+		else \
+			echo "  ❌ ERROR: backend.proto no encontrado en $(BACKEND_PROTO_SRC)"; \
+			exit 1; \
+		fi; \
+	fi
 
-rebuild:
-	bash prepare.sh
-	rm -rf grpc-server ik_llama.cpp/build
-	$(MAKE) grpc-server
+# ---------------------------------------------------------------------------
+# CLONAR LLAMA.CPP
+# ---------------------------------------------------------------------------
+llama.cpp: proto-link
+	@echo "📦 Clonando llama.cpp..."
+	@if [ -d "$(PROJECT_DIR)/llama.cpp" ]; then \
+		echo "  ℹ️  llama.cpp ya existe. Verificando versión..."; \
+		cd $(PROJECT_DIR)/llama.cpp && git fetch origin && git checkout $(IK_LLAMA_VERSION); \
+	else \
+		mkdir -p $(PROJECT_DIR)/llama.cpp; \
+		cd $(PROJECT_DIR)/llama.cpp && \
+		git init && \
+		git remote add origin $(LLAMA_REPO) && \
+		git fetch origin && \
+		git checkout -b build $(IK_LLAMA_VERSION); \
+	fi
+	cd $(PROJECT_DIR)/llama.cpp && git submodule update --init --recursive --depth 1 --single-branch
 
-package:
-	bash package.sh
+# ---------------------------------------------------------------------------
+# APLICAR PARCHES
+# ---------------------------------------------------------------------------
+apply-patches: llama.cpp
+	@echo "🔧 Aplicando parches..."
+	@if [ -d "$(PROJECT_DIR)/patches" ] && [ -n "$$(ls $(PROJECT_DIR)/patches/*.patch 2>/dev/null)" ]; then \
+		cd $(PROJECT_DIR)/llama.cpp; \
+		for patch in ../patches/*.patch; do \
+			patch_name=$$(basename "$$patch"); \
+			if patch -p1 --dry-run < "$$patch" > /dev/null 2>&1; then \
+				echo "  Aplicando: $$patch_name"; \
+				patch -p1 < "$$patch" || (patch -R -p1 < "$$patch" 2>/dev/null; exit 1); \
+			else \
+				echo "  Skip (ya aplicado): $$patch_name"; \
+			fi; \
+		done; \
+	else \
+		echo "  ℹ️  No hay parches para aplicar"; \
+	fi
 
-purge:
-	rm -rf ik_llama.cpp/build
-	rm -rf ik_llama.cpp/examples/grpc-server
-	rm -rf grpc-server
-	rm -rf llama-cpp-avx2-build
+# ---------------------------------------------------------------------------
+# BUILD GENÉRICO
+# ---------------------------------------------------------------------------
+define build_variant
+	@echo "══════════════════════════════════════════════════"
+	@echo "  BUILD: $(1)"
+	@echo "══════════════════════════════════════════════════"
+	@mkdir -p $(BUILDS_DIR)/$(1)
+	@mkdir -p $(OUTPUT_DIR)
+	@echo "🧹 Limpiando build anterior..."
+	@rm -rf $(BUILDS_DIR)/$(1)/*
+	@echo "🔨 Configurando CMake..."
+	cd $(BUILDS_DIR)/$(1) && cmake $(PROJECT_DIR) \
+		$(COMMON_CMAKE_ARGS) \
+		$(2)
+	@echo "⚙️  Compilando..."
+	cd $(BUILDS_DIR)/$(1) && cmake --build . --config Release -j $(JOBS) --target grpc-server
+	@echo "📦 Copiando binario a output/..."
+	cp -fv $(BUILDS_DIR)/$(1)/grpc-server $(OUTPUT_DIR)/ik-llama-cpp-$(1)
+	@echo "✅ Build completado: $(OUTPUT_DIR)/ik-llama-cpp-$(1)"
+endef
 
-clean: purge
-	rm -rf ik_llama.cpp
-	rm -f llama-cpp-avx2 llama-cpp-avx llama-cpp-avx512 llama-cpp-fallback llama-cpp-grpc
+# ---------------------------------------------------------------------------
+# VARIANTES ESPECÍFICAS (todas incluyen OpenBLAS estático si está disponible)
+# ---------------------------------------------------------------------------
 
-grpc-server: ik_llama.cpp ik_llama.cpp/examples/grpc-server
-	@echo "Building grpc-server with $(BUILD_TYPE) build type and $(CMAKE_ARGS)"
-ifneq (,$(findstring sycl,$(BUILD_TYPE)))
-	+bash -c "source $(ONEAPI_VARS); \
-	cd ik_llama.cpp && mkdir -p build && cd build && cmake .. $(CMAKE_ARGS) && cmake --build . --config Release -j $(JOBS) $(TARGET)"
-else
-	+cd ik_llama.cpp && mkdir -p build && cd build && cmake .. $(CMAKE_ARGS) && cmake --build . --config Release -j $(JOBS) $(TARGET)
-endif
-	cp ik_llama.cpp/build/bin/grpc-server .
+avx2: llama.cpp apply-patches
+	$(call build_variant,avx2,$(FLAGS_AVX2) $(OPENBLAS_FLAGS))
+
+avx512: llama.cpp apply-patches
+	$(call build_variant,avx512,$(FLAGS_AVX512) $(OPENBLAS_FLAGS))
+
+fallback: llama.cpp apply-patches
+	$(call build_variant,fallback,$(FLAGS_FALLBACK) $(OPENBLAS_FLAGS))
+
+2690v4: llama.cpp apply-patches
+	$(call build_variant,2690v4,$(FLAGS_2690V4))
+
+# ---------------------------------------------------------------------------
+# LIMPIEZA
+# ---------------------------------------------------------------------------
+
+clean:
+	@echo "🧹 Limpiando builds..."
+	@rm -rf $(BUILDS_DIR)/*
+	@rm -rf $(OUTPUT_DIR)/*
+	@echo "✅ Limpieza completada"
+
+purge: clean
+	@echo "🗑️  Eliminando llama.cpp clonado..."
+	@rm -rf $(PROJECT_DIR)/llama.cpp
+	@echo "✅ Purge completado"
+
+# ---------------------------------------------------------------------------
+# DIAGNÓSTICO
+# ---------------------------------------------------------------------------
+
+diagnose:
+	@echo "══════════════════════════════════════════════════"
+	@echo "  Diagnóstico de Rutas y OpenBLAS"
+	@echo "══════════════════════════════════════════════════"
+	@echo "PROJECT_DIR:       $(PROJECT_DIR)"
+	@echo "INSTALLED_PACKAGES:$(INSTALLED_PACKAGES)"
+	@echo "GRPC_CMAKE_DIR:    $(GRPC_CMAKE_DIR)"
+	@echo "OPENBLAS_ROOT:     $(OPENBLAS_ROOT)"
+	@echo "OPENBLAS_FOUND:    $(OPENBLAS_FOUND)"
+	@echo "OPENBLAS_LIBDIR:   $(OPENBLAS_LIBDIR)"
+	@echo "OPENBLAS_STATIC_LIB: $(OPENBLAS_STATIC_LIB)"
+	@echo ""
+	@echo "── Verificando archivos críticos ──"
+	@test -f $(INSTALLED_PACKAGES)/bin/protoc && echo "✅ protoc" || echo "❌ protoc"
+	@test -f $(INSTALLED_PACKAGES)/bin/grpc_cpp_plugin && echo "✅ grpc_cpp_plugin" || echo "❌ grpc_cpp_plugin"
+	@test -L $(PROJECT_DIR)/backend.proto && echo "✅ backend.proto (symlink)" || echo "❌ backend.proto"
+	@test -d $(PROJECT_DIR)/grpccod && echo "✅ grpccod/" || echo "❌ grpccod/"
+	@test -d $(PROJECT_DIR)/commoncod && echo "✅ commoncod/" || echo "❌ commoncod/"
+	@test -d $(PROJECT_DIR)/llama.cpp && echo "✅ llama.cpp/" || echo "  ⚠️  llama.cpp/ (no clonado aún)"
+	@test -f "$(OPENBLAS_STATIC_LIB)" && echo "✅ libopenblas.a (estático)" || echo "  ⚠️  libopenblas.a no encontrado (compilación sin BLAS estática)"
