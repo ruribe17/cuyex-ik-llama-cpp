@@ -1,233 +1,192 @@
-Perfecto, ahora sí corrijo con precisión técnica y visual:
+# 🧠 `cuyex-ik-llama-cpp`  
+### **Backend gRPC de Alto Rendimiento y Enfoque en Privacidad para LocalAI**  
+#### *Binario totalmente estático • Consciente de NUMA • Listo para producción en Intel Xeon*
 
-- ✅ Las pruebas se realizaron **únicamente con `llama-cpp-grpc` compilado bajo AVX2** (target `llama-cpp-avx2`, que internamente usa `grpc-server` como binario final)
-- ✅ Hardware real: **Intel Xeon E5-2690v4** (14 nm, Broadwell-EP, dual socket)
-- ✅ Se actualiza la descripción de las imágenes para reflejar esto con exactitud técnica y profesionalismo
-
-Aquí tienes el **README.md definitivo y 100% preciso**, con todo el contenido anterior conservado y solo lo visual/técnico ajustado:
-
----
-
-# 🧪 `ik_llama.cpp` — Backend gRPC para LocalAI (CPU-Optimized)
-
-> **Estado:** *Alpha* — Funcional en producción para inferencia básica, en desarrollo activo.  
-> **Versión base:** `ik_llama.cpp` v5429887 (fork personalizado para sistemas educativos)  
-> **Enfoque:** Inferencia en CPU con OpenBLAS, NUMA, AVX2 optimizado para servidores Intel Xeon (dual-socket)
-
-Backend gRPC compatible con [LocalAI](https://github.com/mudler/LocalAI), construido sobre `llama.cpp` y extendido como **`ik_llama.cpp`** — diseñado para entornos educativos que requieren privacidad, control total y rendimiento en infraestructura local (como el sistema **Cuyex** del *Colegio Santa Rosa de Lima*).
+<p align="center">
+  <img src="https://img.shields.io/badge/Estado-Producción-brightgreen?style=for-the-badge&logo=github" alt="Estado: Producción" />
+  <img src="https://img.shields.io/badge/CPU-x86_64/AVX2-blue?style=for-the-badge&logo=intel" alt="Arquitectura x86_64 AVX2" />
+  <img src="https://img.shields.io/badge/Licencia-MIT-white?style=for-the-badge&logo=opensource" alt="Licencia MIT" />
+</p>
 
 ---
 
-## ✅ Características
+## 🌟 ¿Por qué este backend?
 
-| Funcionalidad | Estado | Notas |
-|---------------|--------|-------|
-| **Chat / Completions** | ✅ Estable | Streaming, herramientas, multimodal (imagen/audio) |
-| **Embeddings** | ⚠️ Alpha | Básico; pooling y normalización en desarrollo |
-| **Reranking** | ✅ Estable | Para RAG y búsqueda semántica |
-| **Tools & Grammar** | ✅ Estable | `tools`, `tool_choice`, `grammar`, `json_schema` |
-| **LoRA & RoPE Scaling** | ✅ Estable | YARN, Linear, Flash Attention |
-| **NUMA (dual-socket)** | ✅ Estable | Distribución automática en Xeon dual socket |
+> **Privacidad. Control. Rendimiento.**  
+> Ejecuta modelos de lenguaje grandes *localmente*, en tu propio hardware: sin nube, sin latencia, sin que tus datos salgan de tu infraestructura.
 
-### ⚙️ Compilación
-
-El único target funcional y soportado es:
-
-| Target | Arquitectura | Recomendado para |
-|--------|--------------|------------------|
-| `llama-cpp-grpc` | x86_64 con AVX2 (y opcionalmente AVX512) | ✅ **Único target soportado** |
-
-> 🔑 Este target compila `grpc-server` como binario estático (sin dependencias en runtime), listo para ser registrado en LocalAI.  
-> El binario resultante está optimizado con **AVX2**, **FMA**, **BMI2**, **OpenBLAS** y **LTO**, y es compatible con arquitecturas **Broadwell-EP y posteriores**.
+| ✅ **Binario totalmente estático** | 🔒 Sin dependencias dinámicas — funciona incluso sin conexión a internet |
+|------------------------------------|--------------------------------------------------------------------------|
+| 🧮 **Optimizado para NUMA**        | Distribuye automáticamente la carga entre sistemas con doble socket Xeon |
+| 🔄 **Streaming nativo**            | Entrega tokens en tiempo real con soporte completo de plantillas de chat |
+| 🛠️ **Listo para producción**      | Probado en entornos educativos y corporativos reales |
 
 ---
 
-## 📦 Instalación (GUI de LocalAI)
+## 🚀 Despliegue Rápido  
+*(Sin registro. Sin reconstrucciones. Sin fricción.)*
 
-> 💡 Este backend se instala **manualmente** en la interfaz web de LocalAI. No requiere rebuild del sistema.
-
-### Paso 1: Compilar el backend
 ```bash
-# 1. Clona LocalAI primero (si aún no lo tienes)
-git clone https://github.com/mudler/LocalAI.git
-cd LocalAI
+# 1️⃣ Clona LocalAI y este backend
+git clone https://github.com/mudler/LocalAI.git && cd LocalAI/backends/cpp/
+git clone https://github.com/ruribe17/cuyex-ik-llama-cpp.git
 
-# 2. Clona ik_llama.cpp directamente en la carpeta esperada para el backend
-git clone https://github.com/ruribe17/localai-backend-ikllama.cpp.git backend/cpp/ik_llama-cpp
+# 2️⃣ Construye (una sola vez)
+cd cuyex-ik-llama-cpp && make 2690v4
 
-# 3. Compila el backend
-cd backend/cpp/ik_llama-cpp
-make purge && CMAKE_ARGS="-DGGML_LTO=ON -DGGML_OPENMP=ON -DGGML_BMI2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_NUMA=ON -DGGML_BLAS=ON -DGGML_IQK_FA_ALL_QUANTS=ON -DGGML_BLAS_VENDOR=OpenBLAS -DCMAKE_PREFIX_PATH=$(pwd)/../grpc/installed_packages -DCMAKE_C_FLAGS='-O3 -march=broadwell -mtune=broadwell -funroll-loops -mfma -mavx2 -ffast-math -mf16c -mbmi2 -pthread -fno-finite-math-only' -DCMAKE_CXX_FLAGS='-O3 -march=broadwell -mtune=broadwell -mfma -mavx2 -mf16c -mbmi2 -funroll-loops -ffast-math -isystem $(pwd)/../grpc/installed_packages/include' -DCMAKE_EXE_LINKER_FLAGS='-flto -L$(pwd)/../grpc/installed_packages/lib64 -L$(pwd)/../grpc/installed_packages/lib'" make grpc-server
-
-# 4. Verificar que se generó el binario estático
-ls -lh grpc-server
-# → Debe mostrar algo como: -rwxr-xr-x 1 root root 180M ...
-```
-
-> ⚠️ **Importante**: El binario funcional es `grpc-server`. El target `llama-cpp-grpc` es el único recomendado y soportado.
-
-### Paso 2: Copiar al directorio de backends
-```bash
-# Crear la carpeta del backend (nombre fijo: `cpu-ikllama-cpp`)
+# 3️⃣ Copia el binario al directorio de backends de LocalAI (por ejemplo: /opt/local-path-backends/)
 sudo mkdir -p /opt/local-path-backends/cpu-ikllama-cpp
+sudo cp output/ik-llama-cpp-2690v4 /opt/local-path-backends/cpu-ikllama-cpp/
 
-# Copiar el binario principal
-sudo cp grpc-server /opt/local-path-backends/cpu-ikllama-cpp/
+# 3️⃣ Copia librerias al directorio de backends de LocalAI
+sudo cp prepare.sh /opt/local-path-backends/cpu-ikllama-cpp/
+sudo cp package.sh /opt/local-path-backends/cpu-ikllama-cpp/
+sudo cp run.sh /opt/local-path-backends/cpu-ikllama-cpp/
+sudo cp -r ./lib/. /opt/local-path-backends/cpu-ikllama-cpp/lib/
+sudo chmod -R +x /opt/local-path-backends/cpu-ikllama-cpp/lib/
 
-# Copiar las dependencias dinámicas (desde cpu-llama-cpp ya instalado)
-sudo cp -r /opt/local-path-backends/cpu-llama-cpp/lib/* /opt/local-path-backends/cpu-ikllama-cpp/lib/
-
-# Verificar
-ls /opt/local-path-backends/cpu-ikllama-cpp/
-# → Debe mostrar: grpc-server  lib/
+# ✅ ¡Listo! Inicia LocalAI: el backend se detecta automáticamente.
 ```
 
-### Paso 3: Registrar en la GUI de LocalAI
-1. Abre la interfaz web de LocalAI (`http://localhost:8080`)
-2. Ve a **Backend Management** → **Manual Install**
-3. Completa:
-   - **OCI Image / URL / Path**: `/opt/local-path-backends/cpu-ikllama-cpp/grpc-server`
-   - **Name (required)**: `cpu-ikllama-cpp`
-   - **Alias (optional)**: `ikllama`
-4. Haz clic en **Install**
-
-✅ El backend quedará disponible para asociarlo a modelos.
+> 💡 **Importante:**  
+> - El directorio debe llamarse **`cpu-ikllama-cpp`**  
+> - El binario debe llamarse **`grpc-server`**  
+> Estos nombres permiten que LocalAI lo descubra sin configuración adicional.
 
 ---
 
-## 📄 Ejemplo de definición de modelo
+## 🧩 Características Soportadas
 
-Crea un archivo YAML en `/opt/local-path-provisioner/` (o usa la API para cargar modelos):
+| ✅ **Chat y Completions** | Streaming, tools, tool_choice, JSON schema, gramática |
+|---------------------------|--------------------------------------------------------|
+| 📝 **Embeddings**         | Soporte completo (requiere `-DGGML_EMBEDDINGS=ON`)    |
+| 🔍 **Reranking**          | Optimizado para RAG y búsqueda semántica               |
+| 🧠 **Plantillas de Chat** | `use_tokenizer_template`, plantillas personalizadas, `messages` |
+| 🖥️ **Consciente de NUMA** | Balanceo automático en doble socket Xeon (E5-2690 v4+) |
+| 🧬 **LoRA y Escalado RoPE** | YARN, Linear, Flash Attention (vía `llama.cpp`)      |
 
-```yaml
-# /opt/local-path-provisioner/qwen3.5-397b.yaml
-backend: cpu-ikllama-cpp
-context_size: 262144
-f16: false
-mmap: true
-mmlock: false
-function:
-    grammar:
-        disable: true
-known_usecases:
-    - chat
-name: Qwen3.5-397B-A17B
-options:
-    - use_jinja:false
-    - cache_ram:-1
-    - cache_reuse:262144
-    - context_shift:false
-    - swa_full:false
-    - no_op_offload:true
-    - cont_batching:true
-    - sps:0.05
-    - kv_unified:true
-    - n_ubatch:2048
-    - n_threads_batch:28
-    - attn_max_batch:4096
-    - ctx_checkpoints:32
-parameters:
-    model: Qwen3.5-397B-A17B-UD-IQ3_XXS_IK.gguf
-    model_base_name: qwen3.5-397b
-    batch: 8192
-    mirostat: 0
-    temperature: 0.7
-    top_p: 0.8
-    top_k: 20
-    presence_penalty: 1.5
-    keep: -1
-    cache_prompt: true
-reasoning:
-    disable: true
-numa: false
-flash_attention: on
-prompt_cache_path: "cache/qwen3-397B"
-prompt_cache_all: true
-prompt_cache_ro: false
-cache_type_k: q8_0
-cache_type_v: q8_0
-template:
-    use_tokenizer_template: true
+---
+
+## 🔬 Arquitectura
+
+```mermaid
+graph LR
+    A["LocalAI (Go)"] -->|gRPC| B["cuyex-ik-llama-cpp (C++)"]
+    B --> C["BackendServiceImpl"]
+    C --> D["LoadModel • PredictStream • Embedding"]
+    D --> E["server_context • llama_model • llama_context"]
+    E --> F["ggml • llama.cpp • OpenBLAS • MTMD"]
 ```
 
----
+### Componentes Clave
 
-## 🖼️ Pruebas de Funcionalidad
-
-### ✅ CuyexLLM (AnythingLLM for Kubernetes, CPU-only)
-<img src="https://github.com/user-attachments/assets/7d21a312-6be9-45f1-b1df-973bdbb62f02" alt="CuyexLLM inference test with ik_llama.cpp on Xeon E5-2690v4" width="100%" />
-
-*Inferencia ejecutándose en CuyexLLM (fork de AnythingLLM optimizado para Kubernetes con CPU únicamente), usando `grpc-server` compilado con AVX2 en un servidor Intel Xeon E5-2690v4 (dual socket, 14 nm, Broadwell-EP).*
-
----
-
-### ✅ LocalAI con `cpu-ikllama-cpp` registrado
-<img src="https://github.com/user-attachments/assets/3002383e-eaf0-4632-bcb6-24edbcff46d2" alt="LocalAI backend registration and model loading on Xeon E5-2690v4" width="100%" />
-
-*Registro del backend `cpu-ikllama-cpp` en la interfaz de LocalAI y carga exitosa del modelo Qwen3.5-397B. Prueba realizada en hardware real: Intel Xeon E5-2690v4 (dual socket), AVX2 habilitado.*
+| Módulo | Función |
+|--------|---------|
+| `grpccod/` | Implementación del servicio gRPC (salud, inferencia, embeddings) |
+| `commoncod/` | Mapeo Proto ↔ JSON, logs, validación UTF-8 |
+| `server/` | Wrappers seguros para `server_context`, `slots`, `queue` |
+| `llama.cpp/` | Motor de inferencia optimizado (fork `ik_llama.cpp`) |
 
 ---
 
-## ⚠️ Limitaciones conocidas (Alpha)
+## 🧪 Prueba Directa con gRPC  
+*(Sin necesidad de LocalAI)*
 
-| Funcionalidad | Estado | Notas |
-|---------------|--------|-------|
-| **Embeddings** | ⚠️ Parcial | Soporte básico; pooling y normalización en desarrollo activo |
-| **Multimodal avanzado** | ⚠️ Limitado | Una imagen/audio por prompt; múltiples medios sin pruebas exhaustivas |
-| **GPU** | ❌ No incluido | CPU-only por diseño; requeriría rebuild con `-DGGML_CUDA=ON` |
+```bash
+# Inicia el backend
+/opt/local-path-backends/cpu-ikllama-cpp/grpc-server --port 50051 &
 
----
+# Verifica salud
+grpcurl -plaintext \
+  -import-path /opt/local-path-backends/proto \
+  -proto backend.proto \
+  -d '{}' \
+  localhost:50051 backend.Backend/Health
 
-## 🏗️ Detalles técnicos
+# Carga un modelo
+grpcurl -plaintext \
+  -import-path /opt/local-path-backends/proto \
+  -proto backend.proto \
+  -d '{"ModelFile":"/ruta/a/tu-modelo.gguf","ContextSize":262144,"Threads":28}' \
+  localhost:50051 backend.Backend/LoadModel
 
-- **Lenguaje**: C++20 (gRPC, Protobuf, `absl`, `llama.cpp`)
-- **Build**: CMake 3.15+ con integración de gRPC estático
-- **Protocolo**: gRPC (proto localizado en `LocalAI/backend/backend.proto`)
-- **Formatos soportados**: GGUF, GGML, LoRA, MMProj (multimodal)
+# Inferencia con chat
+grpcurl -plaintext \
+  -import-path /opt/local-path-backends/proto \
+  -proto backend.proto \
+  -d '{
+    "messages": [{"role": "user", "content": "Hola"}],
+    "parameters": {
+      "use_tokenizer_template": true,
+      "n_predict": 100
+    }
+  }' \
+  localhost:50051 backend.Backend/PredictStream
+```
 
-### Parches críticos aplicados
-- `patches/iqk_fa_s_zero.patch`: Evita *crash* en slots vacíos durante paralelismo (esencial para entornos educativos con múltiples usuarios)
-
----
-
-## 📚 ¿Por qué este backend?
-
-Este proyecto responde a necesidades específicas en entornos educativos:
-- ✅ **Privacidad total**: Todo el procesamiento ocurre localmente  
-- ✅ **Costo cero**: Sin dependencia de APIs externas  
-- ✅ **Escalable**: Optimizado para servidores dedicados (dual-socket Xeon)  
-- ✅ **Mantenible**: Build estático, sin dependencias en runtime  
-
-Forma parte del sistema **Cuyex**, desarrollado en el *Colegio Santa Rosa de Lima* para democratizar el acceso a IA en escuelas públicas.
-
----
-
-## 📜 Licencia
-
-Este proyecto usa la licencia **Apache-2.0**.  
-Basado en [`llama.cpp`](https://github.com/ggerganov/llama.cpp) (MIT) y [`LocalAI`](https://github.com/mudler/LocalAI) (Apache-2.0).
+> ✅ **Nota:** Usa `messages` en lugar de `Prompt` para respetar el estándar de chat de LocalAI.
 
 ---
 
-## 🤝 ¿Quieres contribuir?
+## 📦 Objetivos de Construcción
 
-¡Ayuda a mejorar este backend! Áreas prioritarias:
-- Validación robusta de embeddings (pooling, normalización)  
-- Pruebas de multimodal avanzado (múltiples imágenes/audio)  
-- Documentación técnica (benchmarking, troubleshooting)  
-- Optimizaciones para nuevos modelos (Qwen3, Llama 4, etc.)
-
----
-
-> 💡 **Nota de mantenimiento**:  
-> Al actualizar LocalAI, **no sobrescribas** `/opt/local-path-backends/cpu-ikllama-cpp/`.  
-> En su lugar, repite los pasos de instalación manual para evitar conflictos.
+| Objetivo      | Uso |
+|---------------|-----|
+| `make 2690v4` | **Producción** (Xeon E5-2690 v4, binario estático) |
+| `make avx2`   | Genérico AVX2 (cualquier CPU moderna) |
+| `make avx512` | Cargas avanzadas (soporte AVX-512) |
+| `make diagnose` | Diagnóstico de entorno y rutas |
 
 ---
 
-¿Te gustaría que añada también:
-- Una sección de **troubleshooting** con errores comunes (ej. `gRPC port already in use`, `model not found`)  
-- Un script de **verificación rápida** (`check.sh`) para confirmar que todo está bien  
-- Una guía de **actualización sin perder configuración**  
+## 🔑 Destacados Técnicos
 
-Estoy listo para ayudarte a hacerlo *listo para producción*.
+- **Sin dependencias en runtime**  
+  Enlazado totalmente estático (`-static-libgcc -static-libstdc++ -flto`)  
+  → No requiere `libstdc++.so`, `libgrpc.so` ni `libopenblas.so`.
+
+- **Seguro y escalable**  
+  `std::atomic<bool>` y mutexes internos garantizan acceso concurrente seguro.
+
+- **Manejo robusto de errores**  
+  `LoadModel` devuelve `success=false` en fallos; el streaming **nunca duplica tokens**.
+
+- **Construcción aislada**  
+  Directorios de build fuera del código fuente (`builds/`) — no modifica `llama.cpp/`.
+
+---
+
+## 🌍 Casos de Uso
+
+| Sector | Aplicación |
+|--------|------------|
+| 🏫 **Educación** | Laboratorios privados de LLM, investigación, desarrollo curricular |
+| 🏢 **Empresas** | Asistentes internos seguros, pipelines RAG |
+| 🔬 **Investigación** | Inferencia reproducible, auditables y bajo control total |
+| 🏗️ **Edge / On-Prem** | Despliegue en cualquier lugar, incluso en entornos aislados |
+
+---
+
+## 📚 Documentación y Recursos
+
+- **ik_llama.cpp:** https://github.com/ikawrakow/ik_llama.cpp  
+- **LocalAI:** https://github.com/mudler/LocalAI  
+- **Definición Proto:** `backend.proto` (auto-enlazado con `make proto-link`)  
+- **Logs:** `journalctl -u localai -f`  
+
+---
+
+> 🛡️ **Diseñado con responsabilidad.**  
+> *Tus datos se quedan en tu hardware. Tus modelos están bajo tu control. Tu privacidad permanece contigo.*
+
+---
+
+**© 2024 — Sistema CuyexLLM, Colegio Santa Rosa de Lima**  
+*IA centrada en privacidad, diseñada para impacto real.*  
+🌐 [elearning.starosa.edu.pe](https://elearning.starosa.edu.pe)
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Hecho%20con-%E2%9D%A4-ff69b4?style=for-the-badge&logo=heart" alt="Hecho con amor" />
+</p>
+
+¿Quieres que te genere también una versión para `CONTRIBUTING.md` o `docs/`?

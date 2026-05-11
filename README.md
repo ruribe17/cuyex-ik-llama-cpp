@@ -147,7 +147,7 @@ grpcurl -plaintext   -import-path /root/backendikllama-cpp2/LocalAI/backend   -p
 
 ---
 
-**© 2024 — Cuyex System, Colegio Santa Rosa de Lima**  
+**© 2026 — CuyexLLM System, Colegio Santa Rosa de Lima**  Website: https://elearning.starosa.edu.pe
 *Privacy-first AI, engineered for real-world impact.*
 
 <p align="center">
