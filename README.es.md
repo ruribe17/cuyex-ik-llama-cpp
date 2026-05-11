@@ -43,6 +43,7 @@ sudo cp prepare.sh /opt/local-path-backends/cpu-ikllama-cpp/
 sudo cp package.sh /opt/local-path-backends/cpu-ikllama-cpp/
 sudo cp run.sh /opt/local-path-backends/cpu-ikllama-cpp/
 sudo cp -r ./lib/. /opt/local-path-backends/cpu-ikllama-cpp/lib/
+sudo chmod -R +x /opt/local-path-backends/cpu-ikllama-cpp/lib/
 
 # ✅ ¡Listo! Inicia LocalAI: el backend se detecta automáticamente.
 ```
