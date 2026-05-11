@@ -29,7 +29,7 @@
 ```bash
 # 1️⃣ Clona LocalAI y este backend
 git clone https://github.com/mudler/LocalAI.git && cd LocalAI/backends/cpp/
-git clone https://github.com/ruribe17/cuyex-ik-llama-cpp.git
+git clone https://github.com/ruribe17/cuyex-ik-llama-cpp.git cuyex-ik-llama-cpp
 
 # 2️⃣ Construye (una sola vez)
 cd cuyex-ik-llama-cpp && make 2690v4
