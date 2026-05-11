@@ -38,7 +38,7 @@ cd cuyex-ik-llama-cpp && make 2690v4
 sudo mkdir -p /opt/local-path-backends/cpu-ikllama-cpp
 sudo cp output/ik-llama-cpp-2690v4 /opt/local-path-backends/cpu-ikllama-cpp/
 
-# 3️⃣ Copia librerias al directorio de backends de LocalAI
+# 4️⃣ Copia librerias al directorio de backends de LocalAI
 sudo cp prepare.sh /opt/local-path-backends/cpu-ikllama-cpp/
 sudo cp package.sh /opt/local-path-backends/cpu-ikllama-cpp/
 sudo cp run.sh /opt/local-path-backends/cpu-ikllama-cpp/
