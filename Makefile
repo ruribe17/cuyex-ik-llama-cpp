@@ -3,7 +3,8 @@
 # =============================================================================
 
 # IK_LLAMA_VERSION  ?= a8aecbf15933295af96504f9a693998322185b5c
-IK_LLAMA_VERSION  ?= 35845dd9753762829fd9b5d75a0b710d9b5bacf5
+# IK_LLAMA_VERSION  ?= 35845dd9753762829fd9b5d75a0b710d9b5bacf5
+IK_LLAMA_VERSION  ?= 40aae0b6d86d50c0ee7011b3ce59a233203e430a
 LLAMA_REPO        ?= https://github.com/ikawrakow/ik_llama.cpp
 
 JOBS              ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
